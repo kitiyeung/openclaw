@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/runtime-env";
 import { withTimeout } from "openclaw/plugin-sdk/time-runtime";
-import { parseClaudeCodeVersion, supportsClaudeDynamicSystemPromptSections } from "./cli-shared.js";
+import {
+  parseClaudeCodeVersion,
+  supportsClaudeDynamicSystemPromptSections,
+  supportsClaudeThinkingDisplay,
+} from "./cli-shared.js";
 import { resolveClaudeTerminalExecutable } from "./session-catalog-executable.js";
 
 const log = createSubsystemLogger("anthropic-cli-version");
@@ -103,5 +107,6 @@ export function createClaudeCodeVersionProbe(api: OpenClawPluginApi) {
     },
     supportsDynamicSystemPromptSections: () =>
       supportsClaudeDynamicSystemPromptSections(current?.version),
+    supportsThinkingDisplay: () => supportsClaudeThinkingDisplay(current?.version),
   };
 }

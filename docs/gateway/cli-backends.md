@@ -707,6 +707,15 @@ On Claude Code 2.1.98 or newer, the bundled backend adds
 first CLI execution. Concurrent executions share the check. API catalog discovery
 does not start it. Older, unknown, or failed checks keep the established argv.
 
+On Claude Code 2.1.94 or newer, the same check also adds
+`--thinking-display summarized` to agent and compaction turns (not side
+questions), so models with adaptive thinking return summarized thinking text
+instead of empty thinking blocks. Agent turns load no Claude Code setting
+sources, so `showThinkingSummaries` in the user's settings does not reach them.
+OpenClaw's [reasoning visibility](/tools/thinking#reasoning-visibility-reasoning)
+still decides whether that text reaches a channel. A `--thinking-display` already
+in configured `args` is kept.
+
 The bundled Google plugin registers for `google-gemini-cli`:
 
 | Key                       | Value                                                                                  |
