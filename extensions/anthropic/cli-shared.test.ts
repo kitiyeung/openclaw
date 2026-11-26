@@ -6,6 +6,7 @@ import {
   normalizeClaudeBackendConfig,
   resolveClaudeCliExecutionArgs,
   supportsClaudeDynamicSystemPromptSections,
+  supportsClaudeThinkingDisplay,
 } from "./cli-shared.js";
 
 type ClaudePreparedExecutionWithSecret = {
@@ -380,6 +381,60 @@ describe("resolveClaudeCliExecutionArgs", () => {
         "--max-turns 1 --permission-mode default",
       ),
     ]);
+  });
+});
+
+describe("Claude CLI thinking display", () => {
+  // Claude Code returns adaptive thinking as an empty block unless the launch asks
+  // for summaries, and managed turns run with no setting sources, so the user's
+  // showThinkingSummaries setting never applies. Without the flag, reasoning
+  // visibility has no text to show.
+  const THINKING_DISPLAY = ["--thinking-display", "summarized"];
+  const managedTurn = (adapter: Backend, overrides: Record<string, unknown> = {}) =>
+    adapter.resolveExecutionArgs?.({
+      workspaceDir: "/tmp",
+      provider: "claude-cli",
+      modelId: "claude-opus-5-5",
+      useResume: false,
+      thinkingLevel: "high",
+      executionMode: "agent",
+      toolAvailability: { native: ["Read"], openClaw: ["message"] },
+      baseArgs: adapter.config.args ?? [],
+      ...overrides,
+    }) ?? [];
+  const supported = buildAnthropicCliBackend({ supportsThinkingDisplay: () => true });
+  const hasDisplay = (args: readonly string[], value = "summarized") =>
+    args.some((arg, i) => arg === "--thinking-display" && args[i + 1] === value);
+
+  it("asks Claude Code for thinking summaries on managed agent turns", () => {
+    const args = managedTurn(supported);
+    expect(args).toContain("--setting-sources");
+    expect(hasDisplay(args)).toBe(true);
+    expect(hasDisplay(managedTurn(supported, { useResume: true }))).toBe(true);
+    expect(hasDisplay(managedTurn(supported, { controlOperation: "compact" }))).toBe(true);
+  });
+
+  it("keeps one-shot side questions on their isolated argv", () => {
+    expect(hasDisplay(managedTurn(supported, { executionMode: "side-question" }))).toBe(false);
+  });
+
+  it("keeps an operator's own thinking display choice", () => {
+    const args = managedTurn(supported, {
+      baseArgs: [...(supported.config.args ?? []), "--thinking-display", "omitted"],
+    });
+    expect(args.filter((arg) => arg === "--thinking-display")).toHaveLength(1);
+    expect(hasDisplay(args, "omitted")).toBe(true);
+  });
+
+  it("gates the flag on the installed Claude Code version", () => {
+    expect(supportsClaudeThinkingDisplay("2.1.92 (Claude Code)")).toBe(false);
+    expect(supportsClaudeThinkingDisplay("2.1.94 (Claude Code)")).toBe(true);
+    expect(supportsClaudeThinkingDisplay("2.1.326 (Claude Code)")).toBe(true);
+    expect(supportsClaudeThinkingDisplay("2.1.94-beta.1")).toBe(false);
+    expect(supportsClaudeThinkingDisplay(undefined)).toBe(false);
+    const unsupported = buildAnthropicCliBackend({ supportsThinkingDisplay: () => false });
+    expect(managedTurn(unsupported)).not.toContain(THINKING_DISPLAY[0]);
+    expect(managedTurn(buildAnthropicCliBackend())).not.toContain(THINKING_DISPLAY[0]);
   });
 });
 

@@ -21,6 +21,11 @@ const CLAUDE_EXCLUDE_DYNAMIC_SYSTEM_PROMPT_SECTIONS_ARG =
 // Claude Code 2.1.98 added this print-mode cache-control flag. Keep older
 // installations on their established argv when the startup probe cannot prove it.
 const CLAUDE_EXCLUDE_DYNAMIC_SYSTEM_PROMPT_SECTIONS_MINIMUM_VERSION = "2.1.98";
+// Claude Code 2.1.94 added this (hidden) print-mode flag. Adaptive thinking comes
+// back as an empty block without it, and managed turns load no setting sources, so
+// showThinkingSummaries cannot ask for summaries in its place.
+const CLAUDE_THINKING_DISPLAY_ARG = "--thinking-display";
+const CLAUDE_THINKING_DISPLAY_MINIMUM_VERSION = "2.1.94";
 const CLAUDE_SETTINGS_ARG = "--settings";
 const CLAUDE_EFFORT_ARG = "--effort";
 const CLAUDE_FAST_MODE_ARG = "--fast-mode";
@@ -102,13 +107,23 @@ export function parseClaudeCodeVersion(versionOutput: string | undefined): strin
 export function supportsClaudeDynamicSystemPromptSections(
   versionOutput: string | undefined,
 ): boolean {
+  return isClaudeCodeAtLeast(
+    versionOutput,
+    CLAUDE_EXCLUDE_DYNAMIC_SYSTEM_PROMPT_SECTIONS_MINIMUM_VERSION,
+  );
+}
+
+export function supportsClaudeThinkingDisplay(versionOutput: string | undefined): boolean {
+  return isClaudeCodeAtLeast(versionOutput, CLAUDE_THINKING_DISPLAY_MINIMUM_VERSION);
+}
+
+function isClaudeCodeAtLeast(versionOutput: string | undefined, minimumVersion: string): boolean {
   const parsed = parseClaudeCodeVersion(versionOutput);
   if (!parsed) {
     return false;
   }
   const version = parsed.split(".").map(Number);
-  const minimum =
-    CLAUDE_EXCLUDE_DYNAMIC_SYSTEM_PROMPT_SECTIONS_MINIMUM_VERSION.split(".").map(Number);
+  const minimum = minimumVersion.split(".").map(Number);
   for (const [index, component] of version.entries()) {
     const minimumComponent = minimum[index];
     if (component === undefined || minimumComponent === undefined) {
@@ -435,9 +450,21 @@ function resolveClaudeCliRestrictedExecutionArgs(
   return normalized;
 }
 
+// Summaries change only what Claude Code returns, not what the model thinks, so every
+// agent and compaction turn asks for them and the argv stays the same whether or not
+// reasoning is visible; OpenClaw's reasoning visibility decides what reaches a channel.
+function applyClaudeCliThinkingDisplayArgs(args: readonly string[]): string[] {
+  return args.some(
+    (arg) =>
+      arg === CLAUDE_THINKING_DISPLAY_ARG || arg.startsWith(`${CLAUDE_THINKING_DISPLAY_ARG}=`),
+  )
+    ? [...args]
+    : [...args, CLAUDE_THINKING_DISPLAY_ARG, "summarized"];
+}
+
 export function resolveClaudeCliExecutionArgs(
   context: CliBackendResolveExecutionArgsContext,
-  options: { excludeDynamicSystemPromptSections?: boolean } = {},
+  options: { excludeDynamicSystemPromptSections?: boolean; thinkingDisplay?: boolean } = {},
 ): string[] {
   const normalizedArgs = normalizeClaudeBackendArgs(context);
   const baseArgs = context.hostOwnedTools?.includes("exec")
@@ -461,9 +488,15 @@ export function resolveClaudeCliExecutionArgs(
         preserveSlashCommands: context.controlOperation === "compact",
       })
     : executionArgs;
-  return options.excludeDynamicSystemPromptSections && context.executionMode !== "side-question"
-    ? [...resolvedArgs, CLAUDE_EXCLUDE_DYNAMIC_SYSTEM_PROMPT_SECTIONS_ARG]
+  if (context.executionMode === "side-question") {
+    return resolvedArgs;
+  }
+  const displayedArgs = options.thinkingDisplay
+    ? applyClaudeCliThinkingDisplayArgs(resolvedArgs)
     : resolvedArgs;
+  return options.excludeDynamicSystemPromptSections
+    ? [...displayedArgs, CLAUDE_EXCLUDE_DYNAMIC_SYSTEM_PROMPT_SECTIONS_ARG]
+    : displayedArgs;
 }
 
 export function normalizeClaudeBackendConfig(config: CliBackendConfig): CliBackendConfig {

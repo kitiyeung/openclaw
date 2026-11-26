@@ -190,6 +190,7 @@ export function buildAnthropicCliBackend(
   options: {
     ensureDynamicSystemPromptSectionsSupport?: () => Promise<void>;
     supportsDynamicSystemPromptSections?: () => boolean;
+    supportsThinkingDisplay?: () => boolean;
   } = {},
 ): CliBackendPlugin {
   return {
@@ -364,6 +365,7 @@ export function buildAnthropicCliBackend(
     resolveExecutionArgs: (context) =>
       resolveClaudeCliExecutionArgs(context, {
         excludeDynamicSystemPromptSections: options.supportsDynamicSystemPromptSections?.(),
+        thinkingDisplay: options.supportsThinkingDisplay?.(),
       }),
   };
 }
